@@ -1,13 +1,12 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import { APIGatewayProxyEvent, APIGatewayProxyHandlerV2, APIGatewayProxyResult } from "aws-lambda";
 import AWS from "aws-sdk";
 
 import * as uuid from "uuid";
 import axios from 'axios'
 const dynamoDb = new AWS.DynamoDB.DocumentClient();
 
-export  const main :APIGatewayProxyHandlerV2= async(event)=> {
-  // return event.queryStringParameters.searchTerm
-const url =`https://itunes.apple.com/search?term=${event.queryStringParameters.searchTerm}&limit=15`
+export  const main = async(event : APIGatewayProxyEvent):  Promise<APIGatewayProxyResult>=> {
+const url =`https://itunes.apple.com/search?term=${event?.queryStringParameters?.searchTerm}&limit=15`
 const searchResult =  await axios.get(encodeURI(url))
   .then((res) => {
     return res.data
@@ -15,15 +14,19 @@ const searchResult =  await axios.get(encodeURI(url))
   .catch(function (err) {
     console.log("Unable to fetch -", err);
   });
+  const ItemId = uuid.v1();
   const params = {
-    // Get the table name from the environment variable
-    TableName: process.env.tableName,
+    TableName: `${process.env.tableName}`,
     Item: {
-      id: uuid.v1(),
-      content: searchResult, // Parsed from request body
+      id: ItemId,
+      searchResult, 
       createdAt: Date.now(),
     },
   };
   await dynamoDb.put(params).promise();
-  return searchResult
+  const result =await dynamoDb.get({TableName : `${process.env.tableName}` , Key :{id : ItemId}}).promise()
+  return {
+    statusCode: 201,
+    body: JSON.stringify(result.Item),
+  }
 }
